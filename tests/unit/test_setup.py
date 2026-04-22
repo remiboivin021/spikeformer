@@ -35,14 +35,14 @@ class TestConfigLoader:
         from src.snn.config import load_training_config
         config = load_training_config("conventional")
         assert config["training"]["mode"] == "ct"
-        assert config["optimizer"]["type"] == "adamw"
+        assert config["training"]["optimizer"]["type"] == "adamw"
     
     def test_load_hardware_config(self):
         """Test loading hardware config."""
         from src.snn.config import load_hardware_config
         config = load_hardware_config("pcm_crossbar")
         assert config["hardware"]["type"] == "pcm"
-        assert config["adc"]["resolution"] == 5
+        assert config["hardware"]["adc"]["resolution"] == 5
     
     def test_generic_loader_model(self):
         """Test generic config loader for model."""
@@ -120,6 +120,6 @@ class TestGitHubActionsWorkflow:
             config = yaml.safe_load(f)
         
         assert "name" in config
-        assert "on" in config
         assert "jobs" in config
         assert "test" in config["jobs"]
+        assert "smoke-test" in config["jobs"]

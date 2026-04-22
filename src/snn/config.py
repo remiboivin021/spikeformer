@@ -4,7 +4,7 @@ import yaml
 from pathlib import Path
 from typing import Any, Dict
 
-CONFIG_DIR = Path(__file__).parent.parent / "config"
+CONFIG_DIR = Path(__file__).parent.parent.parent / "config"
 
 
 def load_model_config(name: str = "xpikeformer_small") -> Dict[str, Any]:
