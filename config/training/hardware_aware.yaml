@@ -1,0 +1,48 @@
+# Hardware-Aware Training (HWAT) config
+# Reference: Section IV-B papier Xpikeformer
+# Mode: Forward bruité, backward idéal
+
+training:
+  name: hardware_aware
+  mode: hwat                   # hardware-aware training
+  
+  # Start from CT checkpoint
+  init_from: conventional
+  
+  # Optimizer (LR réduit)
+  optimizer:
+    type: adamw
+    lr: 1.0e-4           # 10x plus petit que CT
+    weight_decay: 0.01
+    betas: [0.9, 0.999]
+    eps: 1.0e-8
+  
+  # Scheduler
+  scheduler:
+    type: cosine_annealing
+    T_max: 50
+    eta_min: 1.0e-6
+  
+  # Loss
+  loss:
+    type: cross_entropy
+    label_smoothing: 0.0
+  
+  # Hardware simulation (avec bruit PCM)
+  hardware:
+    noise_std: 0.1            # σ=0.1 gaussien sur poids
+    enable_drift: true
+    drift_rate: 1.0e-4       # Taux de drift par epoch
+    drift_model: "power_law"    # ΔG(t) = G₀·(t/t₀)^-ν
+  
+  # GDC - Global Drift Compensation
+  gdc:
+    enabled: true
+    calibration_interval: 10    # epochs
+    target_accuracy_drop: 0.03    # max 3%
+  
+  # Data augmentation (identique CT)
+  augmentation:
+    random_crop: true
+    random_flip: true
+    normalize: true

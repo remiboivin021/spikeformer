@@ -1,0 +1,37 @@
+# Xpikeformer Small config (4-384)
+# Reference: Table I du papier Xpikeformer
+
+model:
+  name: xpikeformer_small
+  d_model: 384
+  n_heads: 6
+  n_layers: 4
+  T: 8                    # timesteps for spike encoding
+  dropout: 0.0
+
+# Feedforward dimensions
+ffn:
+  hidden_dim: 1536           # 4 * d_model
+  activation: "gelu"
+
+# SSA Engine config
+ssa:
+  d_k: 64                 # d_model / n_heads
+  use_stochastic: true
+  noise_std: 0.0           # σ=0.0 for CT, 0.1 for HWAT
+
+# AIMC Engine config
+aimc:
+  tile_size: 128
+  adc_sharing: 8
+  resolution: 5           # bits
+  noise_std: 0.0           # σ=0.0 for CT, 0.1 for HWAT
+
+training:
+  batch_size: 32
+  epochs: 100
+  learning_rate: 1.0e-3
+  weight_decay: 0.05
+  optimizer: adamw
+  scheduler: cosine
+  warmup_epochs: 5

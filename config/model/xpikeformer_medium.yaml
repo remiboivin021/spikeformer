@@ -1,0 +1,34 @@
+# Xpikeformer Medium config (6-512)
+# Reference: Table I du papier Xpikeformer
+
+model:
+  name: xpikeformer_medium
+  d_model: 512
+  n_heads: 8
+  n_layers: 6
+  T: 8
+  dropout: 0.0
+
+ffn:
+  hidden_dim: 2048
+  activation: "gelu"
+
+ssa:
+  d_k: 64
+  use_stochastic: true
+  noise_std: 0.0
+
+aimc:
+  tile_size: 128
+  adc_sharing: 8
+  resolution: 5
+  noise_std: 0.0
+
+training:
+  batch_size: 32
+  epochs: 100
+  learning_rate: 1.0e-3
+  weight_decay: 0.05
+  optimizer: adamw
+  scheduler: cosine
+  warmup_epochs: 5

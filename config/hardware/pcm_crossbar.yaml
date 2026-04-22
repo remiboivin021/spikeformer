@@ -1,0 +1,48 @@
+# PCM Crossbar Hardware Configuration
+# Reference: Table II papier Xpikeformer
+
+hardware:
+  name: pcm_crossbar
+  type: pcm                 # Phase-change memory
+  
+  # Crossbar parameters
+  crossbar:
+    rows: 4096              # Max parallel inputs
+    cols: 4096             # Max parallel weights
+    tile_size: 128          # Row-block wise tiling
+  
+  # Device characteristics
+  device:
+    r_on: 1000             # Ohms (ON resistance)
+    r_off: 100000          # Ohms (OFF resistance)
+    v_read: 0.4            # Volts
+    v_write: 1.2           # Volts
+    
+  # ADC parameters
+  adc:
+    resolution: 5           # bits
+    sharing_ratio: 8         # ADC partagé entre 8 tiles
+    v_ref: 0.5              # Volts
+    
+  # PCM characteristics
+  pcm:
+    gamma: 0.5              # Nonlinear factor
+    target_stuck: 0.2       # Probability of stuck bits
+    
+  # Drift model (Section III-C)
+  drift:
+    enabled: true
+    nu: 0.1                # Exponent ν dans ΔG(t) = G₀·(t/t₀)^-ν
+    t0: 3600                # Seconds de référence
+    
+  # Noise
+  noise:
+    thermal_std: 0.01        # σ thermal
+    read_noise_std: 0.05     # σ lecture
+    write_noise_std: 0.1     # σ écriture
+    
+  # Timing (cycles)
+  timing:
+    read_latency: 1           # Cycle
+    write_latency: 10         # Cycles
+    adc_latency: 1            # Cycle
