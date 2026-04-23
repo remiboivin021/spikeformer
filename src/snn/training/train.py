@@ -382,7 +382,7 @@ def main(args):
     criterion = nn.CrossEntropyLoss()
     
     # Training loop
-    num_epochs = train_config.get("num_epochs", 10)
+    num_epochs = train_config.get("num_epochs", 100)
     
     print(f"\nTraining for {num_epochs} epochs...")
     

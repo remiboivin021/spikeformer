@@ -5,9 +5,9 @@
 training:
   name: conventional
   mode: ct                    # conventional training
-  dataset: cifar10         # CIFAR-10 dataset
+  dataset: cifar10
   data_dir: ./data
-  device: cpu            # Force CPU (P100 not compatible with PyTorch)
+  num_epochs: 100
   
   # Optimizer
   optimizer:
