@@ -2,14 +2,22 @@
 
 from .train import (
     XpikeformerSNN,
+    ImageNetClassifier,
+    load_pretrained_resnet20,
     train_epoch,
+    train_epoch_imageNet,
     evaluate,
-    create_dummy_dataloader,
+    evaluate_imageNet,
+    create_cifar10_dataloader,
 )
 
 __all__ = [
     "XpikeformerSNN",
+    "ImageNetClassifier",
+    "load_pretrained_resnet20",
     "train_epoch",
+    "train_epoch_imageNet",
     "evaluate",
-    "create_dummy_dataloader",
+    "evaluate_imageNet",
+    "create_cifar10_dataloader",
 ]
