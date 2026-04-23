@@ -8,8 +8,17 @@ CONFIG_DIR = Path(__file__).parent.parent.parent / "config"
 
 
 def load_model_config(name: str = "xpikeformer_small") -> Dict[str, Any]:
-    """Load model configuration by name."""
-    config_path = CONFIG_DIR / "model" / f"{name}.yaml"
+    """Load model configuration by name.
+    
+    Args:
+        name: Config name (xpikeformer_small) or full path (config/model/xpikeformer_small.yaml)
+    """
+    # Check if it's already a full path
+    if name.startswith("config/") or "/" in name or Path(name).exists():
+        config_path = Path(name)
+    else:
+        config_path = CONFIG_DIR / "model" / f"{name}.yaml"
+    
     if not config_path.exists():
         raise FileNotFoundError(f"Model config not found: {config_path}")
     with open(config_path) as f:
@@ -17,8 +26,17 @@ def load_model_config(name: str = "xpikeformer_small") -> Dict[str, Any]:
 
 
 def load_training_config(name: str = "conventional") -> Dict[str, Any]:
-    """Load training configuration by name."""
-    config_path = CONFIG_DIR / "training" / f"{name}.yaml"
+    """Load training configuration by name.
+    
+    Args:
+        name: Config name or full path
+    """
+    # Check if it's already a full path
+    if name.startswith("config/") or "/" in name or Path(name).exists():
+        config_path = Path(name)
+    else:
+        config_path = CONFIG_DIR / "training" / f"{name}.yaml"
+    
     if not config_path.exists():
         raise FileNotFoundError(f"Training config not found: {config_path}")
     with open(config_path) as f:
@@ -26,8 +44,17 @@ def load_training_config(name: str = "conventional") -> Dict[str, Any]:
 
 
 def load_hardware_config(name: str = "pcm_crossbar") -> Dict[str, Any]:
-    """Load hardware configuration by name."""
-    config_path = CONFIG_DIR / "hardware" / f"{name}.yaml"
+    """Load hardware configuration by name.
+    
+    Args:
+        name: Config name or full path
+    """
+    # Check if it's already a full path
+    if name.startswith("config/") or "/" in name or Path(name).exists():
+        config_path = Path(name)
+    else:
+        config_path = CONFIG_DIR / "hardware" / f"{name}.yaml"
+    
     if not config_path.exists():
         raise FileNotFoundError(f"Hardware config not found: {config_path}")
     with open(config_path) as f:
