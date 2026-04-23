@@ -1,10 +1,34 @@
 """Configuration loader for SpikeFormer."""
 
 import yaml
+import os
 from pathlib import Path
 from typing import Any, Dict
 
 CONFIG_DIR = Path(__file__).parent.parent.parent / "config"
+
+
+def get_device(config_device: str = None) -> str:
+    """Get device for training.
+    
+    Args:
+        config_device: Device from config (cpu/cuda)
+    
+    Returns:
+        Device string
+    """
+    if config_device == "cpu":
+        return "cpu"
+    
+    # Try CUDA, fallback to CPU if not available
+    if config_device == "cuda" or config_device is None:
+        try:
+            import torch
+            if torch.cuda.is_available():
+                return "cuda"
+        except Exception:
+            pass
+    return "cpu"
 
 
 def load_model_config(name: str = "xpikeformer_small") -> Dict[str, Any]:

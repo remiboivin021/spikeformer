@@ -115,7 +115,7 @@ def train_epoch(
     train_loader: torch.utils.data.DataLoader,
     optimizer: torch.optim.Optimizer,
     criterion: nn.Module,
-    device: str = "cuda",
+    device: str = "cpu",
 ) -> float:
     """Train for one epoch.
     
@@ -157,7 +157,7 @@ def evaluate(
     model: nn.Module,
     val_loader: torch.utils.data.DataLoader,
     criterion: nn.Module,
-    device: str = "cuda",
+    device: str = "cpu",
 ) -> tuple[float, float]:
     """Evaluate model.
     
@@ -295,9 +295,27 @@ def main(args):
     model_config = load_model_config(args.model)
     train_config = load_training_config(args.config)
     
-    # Device
-    device = train_config.get("device", "cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
+    # Device selection with GPU compatibility fallback
+    config_device = train_config.get("device", "cuda")
+    device = config_device
+    
+    # Test CUDA with fallback for compatibility issues
+    if config_device == "cuda":
+        try:
+            import torch
+            if torch.cuda.is_available():
+                # Try a simple operation to test CUDA works
+                test_tensor = torch.tensor([1.0]).cuda()
+                del test_tensor
+                print("Using device: cuda")
+            else:
+                device = "cpu"
+                print("Warning: CUDA not available. Using CPU.")
+        except Exception as e:
+            print(f"CUDA not compatible with this PyTorch version ({torch.__version__}). Using CPU instead.")
+            device = "cpu"
+    else:
+        print(f"Using device: {device}")
     
     # Model parameters from config
     # CIFAR-10: 32x32x3 = 3072 input, 10 classes
