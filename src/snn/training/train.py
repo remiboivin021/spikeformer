@@ -401,8 +401,11 @@ def main(args):
     
     print("\nTraining complete!")
     
-    # Save model
-    output_path = train_config.get("checkpoint_dir", "checkpoints") / "xpikeformer_final.pt"
+    # Save model - fixed path handling
+    checkpoint_dir = train_config.get("checkpoint_dir", "checkpoints")
+    if isinstance(checkpoint_dir, str):
+        checkpoint_dir = Path(checkpoint_dir)
+    output_path = checkpoint_dir / "xpikeformer_final.pt"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(model.state_dict(), output_path)
     print(f"Model saved to {output_path}")
