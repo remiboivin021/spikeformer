@@ -1,0 +1,69 @@
+# SpikeFormer System Configuration
+# Top-level configuration for the cognitive architecture
+
+# System-wide settings
+system:
+  name: "SpikeFormer"
+  version: "0.1.0"
+  mode: "inference"  # inference, training, evaluation
+  deterministic: true  # Enforce deterministic behavior
+
+# Logging
+logging:
+  level: "INFO"
+  format: "json"
+  output: "stdout"
+  log_dir: "logs/"
+
+# Performance
+performance:
+  batch_processing: false
+  max_batch_size: 1
+  timeout_ms: 1000
+
+# Model paths
+models:
+  checkpoint_dir: "checkpoints/"
+  model_versions_dir: "config/model_versions/"
+  active_version: 1
+
+# Safety
+safety:
+  safe_mode_enabled: true
+  emergency_stop_enabled: true
+  max_retries: 3
+
+# Monitoring
+monitoring:
+  metrics_enabled: true
+  metrics_interval_sec: 10
+  health_check_enabled: true
+
+# Navigation
+navigation:
+  enabled: true
+  # Obstacle detection
+  min_safe_distance: 0.3  # meters
+  warning_distance: 0.5  # meters
+  stop_distance: 0.2  # meters
+  # Robot geometry
+  wheel_base: 0.3  # meters
+  wheel_radius: 0.05  # meters
+
+# Actuators
+actuators:
+  motor_driver:
+    left_type: "dc"
+    right_type: "dc"
+    max_speed_rpm: 100.0
+    wheel_base: 0.3
+
+# Sensors
+sensors:
+  event_camera:
+    width: 640
+    height: 480
+    event_rate_hz: 1000
+  lidar:
+    max_range: 10.0
+    angular_resolution: 1.0
