@@ -1,13 +1,15 @@
 # Conventional Training (CT) config
-# Reference: Section IV-A papier Xpikeformer
-# Mode: FP32 ideal, pas de bruit PCM
+# Reference: Section IV, Section V-A papier Xpikeformer
+# Pretrained ImageNet model fine-tuned on CIFAR-10
 
 training:
   name: conventional
   mode: ct                    # conventional training
   dataset: cifar10
   data_dir: ./data
-  num_epochs: 100
+  num_epochs: 20              # Fine-tuning = fewer epochs needed
+  model_type: resnet18        # Pretrained ImageNet
+  freeze_backbone: false     # Fine-tune all layers
   
   # Optimizer
   optimizer:

@@ -1,8 +1,9 @@
-"""Training pipeline for SpikeFormer."""
+"""Training pipeline for SpikeFormer with pretrained support."""
 
 import argparse
 import torch
 import torch.nn as nn
+import torchvision.models as models
 from pathlib import Path
 from typing import Optional
 
@@ -11,6 +12,61 @@ from src.snn.neurons import LeakyIntegrateAndFire
 from src.snn.neurons import BernoulliNeuron
 from src.snn.encoding import BernoulliEncoder
 from src.snn.architecture import SSAModule
+
+
+def load_pretrained_resnet20(num_classes: int = 10) -> nn.Module:
+    """Load pretrained ResNet-20 for transfer learning.
+    
+    Reference: Section IV, Section V-A of Xpikeformer paper
+    Uses pretrained ResNet trained on ImageNet, then fine-tunes.
+    
+    Args:
+        num_classes: Number of output classes
+    
+    Returns:
+        Pretrained ResNet-20 model
+    """
+    # Try to load ResNet20, fall back to ResNet18 if not available
+    try:
+        model = models.resnet20(weights=models.ResNet20_Weights.IMAGENET1K_V1)
+        print("Loaded pretrained ResNet-20 (ImageNet)")
+    except Exception:
+        try:
+            model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
+            print("Loaded pretrained ResNet-18 (ImageNet)")
+        except Exception:
+            model = models.resnet18(weights=None)
+            print("Warning: Could not load pretrained weights")
+    
+    # Replace final FC layer for our num_classes
+    in_features = model.fc.in_features
+    model.fc = nn.Linear(in_features, num_classes)
+    
+    return model
+
+
+def load_checkpoint(checkpoint_path: str, device: str = "cpu") -> nn.Module:
+    """Load model from checkpoint.
+    
+    Args:
+        checkpoint_path: Path to checkpoint file
+        device: Device to load on
+    
+    Returns:
+        Loaded model
+    """
+    checkpoint_path = Path(checkpoint_path)
+    if not checkpoint_path.exists():
+        raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
+    
+    state_dict = torch.load(checkpoint_path, map_location=device)
+    
+    # Try to create model and load weights
+    model = load_pretrained_resnet20(num_classes=10)
+    model.load_state_dict(state_dict)
+    print(f"Loaded checkpoint from {checkpoint_path}")
+    
+    return model
 
 
 class XpikeformerSNN(nn.Module):
@@ -87,7 +143,6 @@ class XpikeformerSNN(nn.Module):
         x = self.encoder(x)  # (batch, input_dim, T)
         
         # Project to hidden dimension - process per timestep
-        # (batch, input_dim, T) -> (batch, T, input_dim) -> (batch, T, hidden_dim) -> (batch, hidden_dim, T)
         x = x.transpose(1, 2)  # (batch, T, input_dim)
         x = self.input_proj(x)  # (batch, T, hidden_dim)
         x = x.transpose(1, 2)  # (batch, hidden_dim, T)
@@ -96,10 +151,7 @@ class XpikeformerSNN(nn.Module):
         membrane = torch.zeros(batch_size, self.hidden_dim, device=x.device)
         
         for i, (layer, lif) in enumerate(zip(self.layers, self.lif_neurons)):
-            # Apply SSA transformation
             x = layer(x)
-            
-            # LIF dynamics - take first timestep for membrane
             spikes, membrane = lif(membrane, x[:, :, 0])
             x = spikes.unsqueeze(-1).expand_as(x)
         
@@ -110,6 +162,77 @@ class XpikeformerSNN(nn.Module):
         return x
 
 
+class ImageNetClassifier(nn.Module):
+    """ImageNet-style classifier with pretrained backbone.
+    
+    Simpler approach: Use pretrained ResNet as feature extractor
+    with custom head for CIFAR-10.
+    """
+    
+    def __init__(
+        self,
+        backbone: str = "resnet18",
+        num_classes: int = 10,
+        pretrained: bool = True,
+        freeze_backbone: bool = False,
+    ):
+        """Initialize classifier.
+        
+        Args:
+            backbone: Backbone architecture (resnet18/resnet20)
+            num_classes: Number of output classes
+            pretrained: Use ImageNet pretrained weights
+            freeze_backbone: Freeze backbone weights
+        """
+        super().__init__()
+        self.num_classes = num_classes
+        self.freeze_backbone = freeze_backbone
+        
+        # Load backbone
+        if backbone == "resnet20":
+            try:
+                self.backbone = models.resnet20(
+                    weights=models.ResNet20_Weights.IMAGENET1K_V1 if pretrained else None
+                )
+            except Exception:
+                self.backbone = models.resnet18(
+                    weights=models.ResNet18_Weights.IMAGENET1K_V1 if pretrained else None
+                )
+        else:
+            self.backbone = models.resnet18(
+                weights=models.ResNet18_Weights.IMAGENET1K_V1 if pretrained else None
+            )
+        
+        # Replace final layer
+        in_features = self.backbone.fc.in_features
+        self.backbone.fc = nn.Linear(in_features, num_classes)
+        
+        # Optionally freeze backbone
+        if freeze_backbone:
+            for param in self.backbone.parameters():
+                param.requires_grad = False
+            self.backbone.fc.weight.requires_grad = True
+            self.backbone.fc.bias.requires_grad = True
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass.
+        
+        Args:
+            x: Input tensor (batch, 3, 32, 32) for CIFAR-10
+        
+        Returns:
+            Output tensor (batch, num_classes)
+        """
+        # ResNet expects (batch, 3, 224, 224) - resize for CIFAR
+        if x.shape[-1] == 32:
+            x = torch.nn.functional.interpolate(
+                x, size=224, mode='bilinear', align_corners=False
+            )
+        
+        x = self.backbone(x)
+        return x
+
+
 def train_epoch(
     model: nn.Module,
     train_loader: torch.utils.data.DataLoader,
@@ -117,27 +240,44 @@ def train_epoch(
     criterion: nn.Module,
     device: str = "cpu",
 ) -> float:
-    """Train for one epoch.
-    
-    Args:
-        model: Model to train
-        train_loader: Training data loader
-        optimizer: Optimizer
-        criterion: Loss criterion
-        device: Device (cuda/cpu)
-    
-    Returns:
-        Average loss for epoch
-    """
+    """Train for one epoch."""
     model.train()
     total_loss = 0.0
     num_batches = 0
     
     for batch_idx, (inputs, targets) in enumerate(train_loader):
-        # CIFAR-10: (batch, 3, 32, 32) -> (batch, 3072)
         if inputs.dim() == 4:
             inputs = inputs.view(inputs.size(0), -1)
         
+        inputs = inputs.to(device)
+        targets = targets.to(device)
+        
+        optimizer.zero_grad()
+        outputs = model(inputs)
+        loss = criterion(outputs, targets)
+        loss.backward()
+        optimizer.step()
+        
+        total_loss += loss.item()
+        num_batches += 1
+    
+    return total_loss / max(num_batches, 1)
+
+
+def train_epoch_imageNet(
+    model: nn.Module,
+    train_loader: torch.utils.data.DataLoader,
+    optimizer: torch.optim.Optimizer,
+    criterion: nn.Module,
+    device: str = "cpu",
+) -> float:
+    """Train ImageNet classifier for one epoch."""
+    model.train()
+    total_loss = 0.0
+    num_batches = 0
+    
+    for batch_idx, (inputs, targets) in enumerate(train_loader):
+        # inputs already (batch, 3, 32, 32) for CIFAR
         inputs = inputs.to(device)
         targets = targets.to(device)
         
@@ -159,17 +299,7 @@ def evaluate(
     criterion: nn.Module,
     device: str = "cpu",
 ) -> tuple[float, float]:
-    """Evaluate model.
-    
-    Args:
-        model: Model to evaluate
-        val_loader: Validation data loader
-        criterion: Loss criterion
-        device: Device
-    
-    Returns:
-        Tuple of (average loss, accuracy)
-    """
+    """Evaluate model."""
     model.eval()
     total_loss = 0.0
     correct = 0
@@ -178,7 +308,6 @@ def evaluate(
     
     with torch.no_grad():
         for inputs, targets in val_loader:
-            # CIFAR-10: (batch, 3, 32, 32) -> (batch, 3072)
             if inputs.dim() == 4:
                 inputs = inputs.view(inputs.size(0), -1)
             
@@ -189,7 +318,6 @@ def evaluate(
             loss = criterion(outputs, targets)
             total_loss += loss.item()
             
-            # Classification accuracy
             predictions = outputs.argmax(dim=-1)
             correct += (predictions == targets).sum().item()
             total += targets.shape[0]
@@ -201,35 +329,37 @@ def evaluate(
     return avg_loss, accuracy
 
 
-def create_dummy_dataloader(
-    batch_size: int = 32,
-    num_samples: int = 1000,
-    input_dim: int = 128,
-    num_classes: int = 10,
-) -> torch.utils.data.DataLoader:
-    """Create dummy dataloader for testing.
+def evaluate_imageNet(
+    model: nn.Module,
+    val_loader: torch.utils.data.DataLoader,
+    criterion: nn.Module,
+    device: str = "cpu",
+) -> tuple[float, float]:
+    """Evaluate ImageNet classifier."""
+    model.eval()
+    total_loss = 0.0
+    correct = 0
+    total = 0
+    num_batches = 0
     
-    Args:
-        batch_size: Batch size
-        num_samples: Number of samples
-        input_dim: Input dimension
-        num_classes: Number of classes
+    with torch.no_grad():
+        for inputs, targets in val_loader:
+            inputs = inputs.to(device)
+            targets = targets.to(device)
+            
+            outputs = model(inputs)
+            loss = criterion(outputs, targets)
+            total_loss += loss.item()
+            
+            predictions = outputs.argmax(dim=-1)
+            correct += (predictions == targets).sum().item()
+            total += targets.shape[0]
+            num_batches += 1
     
-    Returns:
-        DataLoader with dummy data
-    """
-    # Synthetic classification data
-    X = torch.randn(num_samples, input_dim)
-    y = torch.randint(0, num_classes, (num_samples,))
+    avg_loss = total_loss / max(num_batches, 1)
+    accuracy = correct / max(total, 1)
     
-    dataset = torch.utils.data.TensorDataset(X, y)
-    loader = torch.utils.data.DataLoader(
-        dataset,
-        batch_size=batch_size,
-        shuffle=True,
-    )
-    
-    return loader
+    return avg_loss, accuracy
 
 
 def create_cifar10_dataloader(
@@ -238,23 +368,11 @@ def create_cifar10_dataloader(
     train: bool = True,
     download: bool = True,
     num_workers: int = 2,
-) -> torch.utils.data.DataLoader:
-    """Create CIFAR-10 dataloader.
-    
-    Args:
-        batch_size: Batch size
-        data_dir: Data directory
-        train: Training or validation split
-        download: Download if not present
-        num_workers: Data loading workers
-    
-    Returns:
-        DataLoader with CIFAR-10 data
-    """
+):
+    """Create CIFAR-10 dataloader."""
     import torchvision
     import torchvision.transforms as transforms
     
-    # CIFAR-10 transforms
     if train:
         transform = transforms.Compose([
             transforms.RandomCrop(32, padding=4),
@@ -286,12 +404,9 @@ def create_cifar10_dataloader(
 
 
 def main(args):
-    """Main training function.
+    """Main training function."""
+    from src.snn.config import load_model_config, load_training_config
     
-    Args:
-        args: Command line arguments
-    """
-    # Load configurations
     model_config = load_model_config(args.model)
     train_config = load_training_config(args.config)
     
@@ -299,12 +414,10 @@ def main(args):
     config_device = train_config.get("device", "cuda")
     device = config_device
     
-    # Test CUDA with fallback for compatibility issues
     if config_device == "cuda":
         try:
             import torch
             if torch.cuda.is_available():
-                # Try a simple operation to test CUDA works
                 test_tensor = torch.tensor([1.0]).cuda()
                 del test_tensor
                 print("Using device: cuda")
@@ -312,87 +425,92 @@ def main(args):
                 device = "cpu"
                 print("Warning: CUDA not available. Using CPU.")
         except Exception as e:
-            print(f"CUDA not compatible with this PyTorch version ({torch.__version__}). Using CPU instead.")
+            print(f"CUDA not compatible. Using CPU instead.")
             device = "cpu"
     else:
         print(f"Using device: {device}")
     
-    # Model parameters from config
-    # CIFAR-10: 32x32x3 = 3072 input, 10 classes
-    input_dim = model_config.get("input_dim", 3072)  # CIFAR-10: 32*32*3
-    hidden_dim = model_config.get("hidden_dim", 256)
-    output_dim = model_config.get("output_dim", 10)  # CIFAR-10: 10 classes
-    num_layers = model_config.get("num_layers", 3)
-    T = model_config.get("T", 8)
-    dropout = model_config.get("dropout", 0.1)
+    # Model selection
+    model_type = train_config.get("model_type", "resnet18")
+    num_classes = train_config.get("output_dim", 10)
     
-    # Create model
-    model = XpikeformerSNN(
-        input_dim=input_dim,
-        hidden_dim=hidden_dim,
-        output_dim=output_dim,
-        num_layers=num_layers,
-        T=T,
-        dropout=dropout,
-    ).to(device)
+    # Load pretrained ImageNet model
+    print(f"\nLoading pretrained {model_type} (ImageNet)...")
+    
+    if model_type in ["resnet18", "resnet20"]:
+        model = ImageNetClassifier(
+            backbone=model_type,
+            num_classes=num_classes,
+            pretrained=True,
+            freeze_backbone=train_config.get("freeze_backbone", False),
+        ).to(device)
+    else:
+        model = XpikeformerSNN(
+            input_dim=model_config.get("input_dim", 3072),
+            hidden_dim=model_config.get("hidden_dim", 256),
+            output_dim=model_config.get("output_dim", 10),
+            num_layers=model_config.get("num_layers", 3),
+            T=model_config.get("T", 8),
+            dropout=model_config.get("dropout", 0.1),
+        ).to(device)
     
     print(f"Model: {model.__class__.__name__}")
     print(f"Parameters: {sum(p.numel() for p in model.parameters()) / 1e6:.2f}M")
     
-    # Dataset selection
-    dataset_name = train_config.get("dataset", "dummy")
+    # Dataloaders
+    dataset_name = train_config.get("dataset", "cifar10")
     data_dir = train_config.get("data_dir", "./data")
     
-    if dataset_name == "cifar10":
-        print(f"\nLoading CIFAR-10 dataset...")
-        batch_size = train_config.get("batch_size", 32)
-        train_loader = create_cifar10_dataloader(
-            batch_size=batch_size,
-            data_dir=data_dir,
-            train=True,
-            download=True,
-        )
-        val_loader = create_cifar10_dataloader(
-            batch_size=batch_size,
-            data_dir=data_dir,
-            train=False,
-            download=True,
+    print(f"\nLoading {dataset_name} dataset...")
+    
+    batch_size = train_config.get("batch_size", 32)
+    train_loader = create_cifar10_dataloader(
+        batch_size=batch_size,
+        data_dir=data_dir,
+        train=True,
+        download=True,
+    )
+    val_loader = create_cifar10_dataloader(
+        batch_size=batch_size,
+        data_dir=data_dir,
+        train=False,
+        download=True,
+    )
+    
+    # Optimizer - different LR for backbone vs new layers
+    if train_config.get("freeze_backbone", False):
+        optimizer = torch.optim.Adam(
+            filter(lambda p: p.requires_grad, model.parameters()),
+            lr=train_config.get("learning_rate", 1e-3),
         )
     else:
-        # Create dataloaders
-        batch_size = train_config.get("batch_size", 32)
-        train_loader = create_dummy_dataloader(
-            batch_size=batch_size,
-            num_samples=train_config.get("num_train_samples", 1000),
-            input_dim=input_dim,
-            num_classes=output_dim,
-        )
-        val_loader = create_dummy_dataloader(
-            batch_size=batch_size,
-            num_samples=train_config.get("num_val_samples", 200),
-            input_dim=input_dim,
-            num_classes=output_dim,
+        optimizer = torch.optim.AdamW(
+            model.parameters(),
+            lr=train_config.get("learning_rate", 1e-3),
+            weight_decay=train_config.get("weight_decay", 0.05),
         )
     
-    # Optimizer and loss
-    optimizer = torch.optim.Adam(
-        model.parameters(),
-        lr=train_config.get("learning_rate", 1e-3),
-    )
     criterion = nn.CrossEntropyLoss()
     
     # Training loop
     num_epochs = train_config.get("num_epochs", 100)
-    
     print(f"\nTraining for {num_epochs} epochs...")
     
     for epoch in range(num_epochs):
-        train_loss = train_epoch(
-            model, train_loader, optimizer, criterion, device
-        )
-        val_loss, val_acc = evaluate(
-            model, val_loader, criterion, device
-        )
+        if model_type in ["resnet18", "resnet20"]:
+            train_loss = train_epoch_imageNet(
+                model, train_loader, optimizer, criterion, device
+            )
+            val_loss, val_acc = evaluate_imageNet(
+                model, val_loader, criterion, device
+            )
+        else:
+            train_loss = train_epoch(
+                model, train_loader, optimizer, criterion, device
+            )
+            val_loss, val_acc = evaluate(
+                model, val_loader, criterion, device
+            )
         
         print(f"Epoch {epoch+1}/{num_epochs} | "
               f"Train Loss: {train_loss:.4f} | "
@@ -401,7 +519,7 @@ def main(args):
     
     print("\nTraining complete!")
     
-    # Save model - fixed path handling
+    # Save model
     checkpoint_dir = train_config.get("checkpoint_dir", "checkpoints")
     if isinstance(checkpoint_dir, str):
         checkpoint_dir = Path(checkpoint_dir)
@@ -426,4 +544,5 @@ if __name__ == "__main__":
         help="Model config file",
     )
     args = parser.parse_args()
+    
     main(args)
