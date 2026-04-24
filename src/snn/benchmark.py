@@ -348,6 +348,17 @@ class SpikeFormerBenchmark:
 
 def format_benchmark_result(result: BenchmarkResult) -> str:
     """Format benchmark result as a readable string."""
+    # Format energy with appropriate unit
+    energy_j = result.estimated_energy_per_sample
+    if energy_j < 1e-9:
+        energy_str = f"{energy_j * 1e12:.2f} pJ"
+    elif energy_j < 1e-6:
+        energy_str = f"{energy_j * 1e9:.2f} nJ"
+    elif energy_j < 1e-3:
+        energy_str = f"{energy_j * 1e6:.2f} µJ"
+    else:
+        energy_str = f"{energy_j * 1e3:.2f} mJ"
+    
     lines = [
         "=" * 60,
         f"Benchmark Results: {result.model_name}",
@@ -370,8 +381,9 @@ def format_benchmark_result(result: BenchmarkResult) -> str:
         "",
         "Energy (estimated):",
         f"  FLOPs/sample: {result.estimated_flops_per_sample:.0f}",
-        f"  Energy/sample: {result.estimated_energy_per_sample:.2e} J",
-        f"  Energy/sample: {result.estimated_energy_per_sample * 1e6:.2f} µJ",
+        f"  Energy/sample: {energy_str}",
+        "  Note: Simplified estimate based on FLOPs",
+        "  Real energy requires hardware measurement",
         "",
     ]
     
@@ -431,20 +443,40 @@ def compare_models(
 
 def print_comparison_table(results: Dict[str, BenchmarkResult]):
     """Print a comparison table for multiple models."""
-    print("\n" + "=" * 80)
+    print("\n" + "=" * 100)
     print("Model Comparison")
-    print("=" * 80)
-    print(f"{'Model':<20} {'Params':<12} {'Latency':<12} {'Throughput':<15} {'Energy':<15} {'Accuracy':<10}")
-    print("-" * 80)
+    print("=" * 100)
+    print(f"{'Model':<22} {'Params':<12} {'Latency':<10} {'Throughput':<12} {'Energy':<15} {'Accuracy':<10}")
+    print(f"{'':22} {'':12} {'(ms)':<10} {'(samples/s)':<12} {'(estimated)':<15} {'(%)':<10}")
+    print("-" * 100)
     
     for name, result in results.items():
+        # Format energy
+        energy_j = result.estimated_energy_per_sample
+        if energy_j < 1e-9:
+            energy_str = f"{energy_j * 1e12:.1f} pJ"
+        elif energy_j < 1e-6:
+            energy_str = f"{energy_j * 1e9:.1f} nJ"
+        elif energy_j < 1e-3:
+            energy_str = f"{energy_j * 1e6:.1f} µJ"
+        else:
+            energy_str = f"{energy_j * 1e3:.1f} mJ"
+        
+        # Format accuracy
+        if result.num_samples > 0:
+            acc_str = f"{result.accuracy:.2f}%"
+        else:
+            acc_str = "N/A"
+        
         print(
-            f"{name:<20} "
+            f"{name:<22} "
             f"{result.num_parameters:<12,} "
-            f"{result.latency_mean:<12.2f} "
-            f"{result.throughput_samples_per_sec:<15.1f} "
-            f"{result.estimated_energy_per_sample * 1e6:<15.2f} "
-            f"{result.accuracy:<10.2f}"
+            f"{result.latency_mean:<10.2f} "
+            f"{result.throughput_samples_per_sec:<12.1f} "
+            f"{energy_str:<15} "
+            f"{acc_str:<10}"
         )
     
-    print("=" * 80)
+    print("-" * 100)
+    print("Note: Energy is estimated based on FLOPs. Real measurement requires hardware.")
+    print("=" * 100)

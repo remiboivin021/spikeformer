@@ -1,22 +1,34 @@
 """Benchmark script for SpikeFormer models.
 
 Usage:
+    # Latency benchmark only
     python scripts/benchmark_models.py --model snn --size base
     python scripts/benchmark_models.py --model ann --size base
     python scripts/benchmark_models.py --compare
-    python scripts/benchmark_models.py --all
+    
+    # Benchmark with accuracy (requires trained model)
+    python scripts/benchmark_models.py --model snn --size base --accuracy
+    python scripts/benchmark_models.py --model ann --size base --accuracy
+    
+    # Load checkpoint for accuracy
+    python scripts/benchmark_models.py --model snn --size base --accuracy --checkpoint checkpoints/snn_best.pth
+    python scripts/benchmark_models.py --model ann --size base --accuracy --checkpoint checkpoints_ann/ann_best.pth
 """
 
 import argparse
 import torch
+import torch.nn as nn
+import torchvision
+import torchvision.transforms as transforms
+from torch.utils.data import DataLoader
 import os
 import sys
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.snn.spikeformer import CIFAR10SpikeFormer, create_spikeformer
-from src.ann.transformer import CIFAR10ANNTransformer, create_ann_transformer
+from src.snn.spikeformer import CIFAR10SpikeFormer
+from src.ann.transformer import CIFAR10ANNTransformer
 from src.snn.benchmark import (
     SpikeFormerBenchmark,
     BenchmarkResult,
@@ -88,12 +100,72 @@ def create_ann_model(size: str = 'base', num_classes: int = 10):
     )
 
 
+def get_cifar10_dataloader(batch_size: int = 128):
+    """Get CIFAR-10 dataloader for accuracy evaluation.
+    
+    Args:
+        batch_size: Batch size
+    
+    Returns:
+        DataLoader
+    """
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+    ])
+    
+    dataset = torchvision.datasets.CIFAR10(
+        root='./data_cifar10',
+        train=False,
+        download=True,
+        transform=transform,
+    )
+    
+    return DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=0)
+
+
+def load_checkpoint(model, checkpoint_path: str, device: str = 'cpu'):
+    """Load model checkpoint.
+    
+    Args:
+        model: Model to load weights into
+        checkpoint_path: Path to checkpoint file
+        device: Device
+    
+    Returns:
+        Model with loaded weights, best accuracy if found
+    """
+    if os.path.isfile(checkpoint_path):
+        print(f"  Loading checkpoint: {checkpoint_path}")
+        checkpoint = torch.load(checkpoint_path, map_location=device)
+        
+        # Try to load state dict (handle different formats)
+        if 'model_state_dict' in checkpoint:
+            model.load_state_dict(checkpoint['model_state_dict'])
+            best_acc = checkpoint.get('best_accuracy', checkpoint.get('accuracy', 0))
+        elif 'model_state_dict' in checkpoint:
+            model.load_state_dict(checkpoint['model_state_dict'])
+            best_acc = checkpoint.get('best_accuracy', 0)
+        else:
+            # Direct state dict
+            model.load_state_dict(checkpoint)
+            best_acc = checkpoint.get('best_accuracy', 0)
+        
+        print(f"  Loaded! Best accuracy: {best_acc:.2f}%")
+        return best_acc
+    else:
+        print(f"  Warning: Checkpoint not found: {checkpoint_path}")
+        return 0
+
+
 def run_benchmark(
     model,
     model_name: str,
     batch_size: int = 4,
     num_runs: int = 50,
     device: str = 'cpu',
+    dataloader = None,
+    checkpoint_path: str = None,
 ):
     """Run benchmark on a model.
     
@@ -103,29 +175,51 @@ def run_benchmark(
         batch_size: Batch size
         num_runs: Number of timing runs
         device: Device to run on
+        dataloader: Optional dataloader for accuracy evaluation
+        checkpoint_path: Optional path to checkpoint
     
     Returns:
         BenchmarkResult
     """
+    # Load checkpoint if provided
+    best_accuracy = 0
+    if checkpoint_path:
+        best_accuracy = load_checkpoint(model, checkpoint_path, device)
+    
     benchmark = SpikeFormerBenchmark(
         model=model,
         model_name=model_name,
         device=device,
     )
     
-    return benchmark.run(
+    result = benchmark.run(
         batch_size=batch_size,
         num_latency_runs=num_runs,
+        dataloader=dataloader,
     )
+    
+    # Use loaded accuracy if available
+    if best_accuracy > 0:
+        result.accuracy = best_accuracy
+    
+    return result
 
 
-def benchmark_snn(size: str = 'base', batch_size: int = 4, num_runs: int = 50):
+def benchmark_snn(
+    size: str = 'base',
+    batch_size: int = 4,
+    num_runs: int = 50,
+    with_accuracy: bool = False,
+    checkpoint: str = None,
+):
     """Benchmark SNN model.
     
     Args:
         size: Model size
         batch_size: Batch size
         num_runs: Number of timing runs
+        with_accuracy: Evaluate accuracy on CIFAR-10 test set
+        checkpoint: Optional path to checkpoint file
     """
     print(f"\n{'='*60}")
     print(f"Benchmarking SNN SpikeFormer ({size})")
@@ -134,19 +228,36 @@ def benchmark_snn(size: str = 'base', batch_size: int = 4, num_runs: int = 50):
     model = create_snn_model(size)
     model_name = f"SNN SpikeFormer ({size})"
     
-    result = run_benchmark(model, model_name, batch_size, num_runs)
+    # Get dataloader if accuracy requested
+    dataloader = None
+    if with_accuracy:
+        print("Loading CIFAR-10 test set...")
+        dataloader = get_cifar10_dataloader(batch_size=batch_size)
+    
+    result = run_benchmark(
+        model, model_name, batch_size, num_runs,
+        dataloader=dataloader, checkpoint_path=checkpoint
+    )
     print(format_benchmark_result(result))
     
     return result
 
 
-def benchmark_ann(size: str = 'base', batch_size: int = 4, num_runs: int = 50):
+def benchmark_ann(
+    size: str = 'base',
+    batch_size: int = 4,
+    num_runs: int = 50,
+    with_accuracy: bool = False,
+    checkpoint: str = None,
+):
     """Benchmark ANN model.
     
     Args:
         size: Model size
         batch_size: Batch size
         num_runs: Number of timing runs
+        with_accuracy: Evaluate accuracy on CIFAR-10 test set
+        checkpoint: Optional path to checkpoint file
     """
     print(f"\n{'='*60}")
     print(f"Benchmarking ANN Transformer ({size})")
@@ -155,7 +266,16 @@ def benchmark_ann(size: str = 'base', batch_size: int = 4, num_runs: int = 50):
     model = create_ann_model(size)
     model_name = f"ANN Transformer ({size})"
     
-    result = run_benchmark(model, model_name, batch_size, num_runs)
+    # Get dataloader if accuracy requested
+    dataloader = None
+    if with_accuracy:
+        print("Loading CIFAR-10 test set...")
+        dataloader = get_cifar10_dataloader(batch_size=batch_size)
+    
+    result = run_benchmark(
+        model, model_name, batch_size, num_runs,
+        dataloader=dataloader, checkpoint_path=checkpoint
+    )
     print(format_benchmark_result(result))
     
     return result
@@ -257,13 +377,30 @@ def main():
         default='cpu',
         help='Device to run on',
     )
+    parser.add_argument(
+        '--accuracy',
+        action='store_true',
+        help='Evaluate accuracy on CIFAR-10 test set',
+    )
+    parser.add_argument(
+        '--checkpoint',
+        type=str,
+        default=None,
+        help='Path to checkpoint file for accuracy evaluation',
+    )
     
     args = parser.parse_args()
     
     if args.model == 'ann':
-        benchmark_ann(args.size, args.batch_size, args.num_runs)
+        benchmark_ann(
+            args.size, args.batch_size, args.num_runs,
+            with_accuracy=args.accuracy, checkpoint=args.checkpoint
+        )
     elif args.model == 'snn':
-        benchmark_snn(args.size, args.batch_size, args.num_runs)
+        benchmark_snn(
+            args.size, args.batch_size, args.num_runs,
+            with_accuracy=args.accuracy, checkpoint=args.checkpoint
+        )
     elif args.model == 'compare':
         compare_ann_snn(
             sizes=['tiny', 'small', 'base'],
@@ -275,5 +412,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()  # Usage: python scripts/benchmark_models.py --compare
-    # Or: python scripts/benchmark_models.py --model compare
+    main()

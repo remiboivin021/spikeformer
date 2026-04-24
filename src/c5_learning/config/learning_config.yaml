@@ -1,0 +1,43 @@
+# C5-Learning System Configuration
+# SpikeFormer - Offline Learning Layer Settings
+
+# Training hyperparameters
+training:
+  batch_size: 32
+  learning_rate: 0.001
+  num_epochs: 10
+  optimizer: "adam"
+  weight_decay: 0.0001
+  gradient_clip: 1.0
+
+# Experience buffer
+experience_buffer:
+  max_capacity: 100000  # Maximum experiences to store
+  min_capacity: 1000    # Minimum before training starts
+  sample_strategy: "random"  # random, sequential
+
+# Model validation
+validation:
+  min_accuracy: 0.8  # Minimum accuracy for promotion
+  safety_checks: true
+  determinism_checks: true
+  memory_checks: true
+  validation_split: 0.2
+
+# Promotion gate
+promotion_gate:
+  stability_threshold: 0.05  # Max validation variance
+  retention_threshold: 5     # Min epochs before promotion
+  improvement_threshold: 0.02  # Min improvement over baseline
+
+# Checkpointing
+checkpoint:
+  save_frequency: 5  # Save every N epochs
+  keep_last: 3       # Keep last N checkpoints
+  save_best: true
+  checkpoint_dir: "checkpoints/"
+
+# Learning mode (must be offline)
+mode:
+  offline_only: true  # Learning never in runtime path
+  training_enabled: false  # Disabled by default for safety

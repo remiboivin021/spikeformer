@@ -1,0 +1,21 @@
+# C2-Embedding Adapter Configuration
+# SpikeFormer - Embedding Adapter Layer Settings
+
+# Adapter parameters
+adapter:
+  output_dim: 256
+  normalize: true  # Apply L2 normalization
+  clamp_range: [-10.0, 10.0]  # Min/max values
+
+# Validation parameters
+validation:
+  max_norm: 2.0
+  allow_negative: true
+
+# Contract version
+contract:
+  version: "v1"
+  required_fields:
+    - version
+    - embedding
+    - metadata

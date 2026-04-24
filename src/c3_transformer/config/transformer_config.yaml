@@ -1,0 +1,40 @@
+# C3-Transformer Configuration
+# SpikeFormer - Transformer Reasoning Layer Settings
+
+# Model architecture
+model:
+  d_model: 256
+  num_heads: 8
+  num_layers: 4
+  d_ff: 1024
+  vocab_size: 1000
+
+# Determinism settings (critical for runtime)
+determinism:
+  no_dropout: true  # No dropout in inference
+  no_random_sampling: true  # No sampling-based decoding
+  fixed_seed: null  # No random seed (deterministic by design)
+
+# Attention settings
+attention:
+  scale: true  # Scale attention by sqrt(d_k)
+  causal: false  # Non-causal (bidirectional) attention
+
+# Feed-forward settings
+feed_forward:
+  activation: "gelu"  # GELU activation
+  dropout: 0.0  # No dropout during inference
+
+# Decoding settings
+decoding:
+  strategy: "argmax"  # Deterministic argmax
+  top_k: 1  # Only argmax (no sampling)
+
+# Layer normalization
+layer_norm:
+  eps: 1e-6
+  bias: true
+
+# Embedding projection
+projection:
+  init_scale: 0.02  # Xavier init scale

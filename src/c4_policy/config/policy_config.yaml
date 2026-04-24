@@ -1,0 +1,46 @@
+# C4-Policy Engine Configuration
+# SpikeFormer - Policy Decision Layer Settings
+
+# Policy engine settings
+policy:
+  num_actions: 10
+  safe_mode_enabled: true
+  safety_threshold: 0.5
+  default_action: "stop"
+
+# Action mapping
+actions:
+  0: "stop"
+  1: "continue"
+  2: "turn_left"
+  3: "turn_right"
+  4: "speed_up"
+  5: "slow_down"
+  6: "observe"
+  7: "wait"
+  8: "approach"
+  9: "retreat"
+
+# Safety filters
+safety_filters:
+  enabled: true
+  max_speed: 100.0  # Maximum speed in units/s
+  min_proximity: 1.0  # Minimum proximity distance
+  forbidden_actions: []  # List of forbidden actions
+
+# Safe mode
+safe_mode:
+  default_action: "stop"
+  safe_actions:
+    stop: 1.0
+    continue: 0.8
+    wait: 0.9
+    observe: 0.7
+  override_enabled: true  # Allow SAFE_MODE override
+
+# Confidence thresholds
+confidence:
+  high: 0.8
+  medium: 0.5
+  low: 0.3
+  minimum_safe: 0.5
