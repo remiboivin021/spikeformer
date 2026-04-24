@@ -1,0 +1,19 @@
+# Hybrid Training config
+# Reference: Section V papier Xpikeformer
+# ANN pretrained + SNN fine-tuning on CIFAR-10
+
+training:
+  name: hybrid
+  mode: hybrid                 # Hybrid ANN-SNN training
+  dataset: cifar10
+  data_dir: ./data
+  num_epochs: 20              # Fine-tune = fewer epochs
+  model_type: resnet18        # Pretrained backbone
+  freeze_backbone: false    # Fine-tune all layers
+  T: 8                       # Spike timesteps
+  
+  # Optimizer - lower LR for fine-tuning
+  learning_rate: 1.0e-4
+      
+  # Training mode: 'full', 'head', or 'freeze'
+  training_mode: full
