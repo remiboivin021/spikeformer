@@ -27,11 +27,21 @@ from .spikeformer import (
     create_spikeformer,
 )
 
+# Import benchmark
+from .benchmark import (
+    SpikeFormerBenchmark,
+    BenchmarkResult,
+    EnergyEstimates,
+    format_benchmark_result,
+    compare_models,
+    print_comparison_table,
+)
+
 __all__ = [
     # Config
     "load_config",
     "load_model_config",
-    "load_training_config", 
+    "load_training_config",
     "load_hardware_config",
     "DEFAULT_MODEL",
     "DEFAULT_TRAINING",
@@ -57,4 +67,11 @@ __all__ = [
     "SpikeFormerLayer",
     "SpikeFormerEncoder",
     "create_spikeformer",
+    # Benchmark
+    "SpikeFormerBenchmark",
+    "BenchmarkResult",
+    "EnergyEstimates",
+    "format_benchmark_result",
+    "compare_models",
+    "print_comparison_table",
 ]
